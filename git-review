@@ -1,0 +1,115 @@
+#!/bin/bash
+# plugin to help with saving urls to git repository
+
+
+
+# lookup root directory
+git_dir=$(git rev-parse --git-dir 2> /dev/null)
+
+if [ -z "$git_dir" ]; then
+    echo "Not a git repository."
+    exit 1
+fi
+
+# get current branch name
+branch=$(git rev-parse --abbrev-ref HEAD)
+
+# set url database under .git directory
+review_file="$git_dir/review_urls"
+
+case "$1" in
+    "http://"* | "https://"* )
+        if grep -q "^$branch: $1" "$review_file"; then
+          echo "Review URL saved for branch $branch."
+        else
+          # if url provided, save to database
+          echo "$branch: $1" >> "$review_file"
+          echo "Review URL saved for branch $branch."
+        fi
+        ;;
+    "all" )
+        if [ -f "$review_file" ]; then
+          cat "$review_file" | sort
+        fi
+        ;;
+    "edit" )
+        if [ -f "$review_file" ]; then
+          vim "$review_file"
+        fi
+        ;;
+    "query" )
+        if [ -f "$review_file" ]; then
+          if [ -n "$2" ]; then
+            grep $2 "$review_file"
+          else
+            echo "Please add a <keyword> to filter content"
+            echo ""
+            cat "$review_file" | sort
+          fi
+        fi
+        ;;
+    "" )
+        # if url not provided, display urls within current branch
+        if [ -f "$review_file" ]; then
+          url=$(grep "^$branch: " "$review_file" | sed "s/^$branch: //")
+					if [ -n "$url" ]; then
+							echo "$url"
+					else
+							echo "No review URL found for branch $branch."
+							echo "Use 'git review <URL>' to add a review URL."
+					fi
+        else
+            echo "No review URL found for branch $branch."
+						echo "Use 'git review <URL>' to add a review URL."
+        fi
+        ;;
+    "remove" | "delete" )
+        # clear info under current branch
+        if [ -f "$review_file" ]; then
+            sed -i.bak "/^$branch: /d" "$review_file"
+            echo "Review URLs for branch $branch removed."
+        else
+            echo "Review URLs for branch $branch removed."
+        fi
+        ;;
+    "purge" )
+        # clear all info under non-exist branch
+        if [ -f "$review_file" ]; then
+            existing_branches=$(git branch --format='%(refname:short)')
+            existing_branches_regex=$(echo "$existing_branches" | tr '\n' '|' | sed 's/|$//')
+            grep -E "^($existing_branches_regex): " "$review_file" > "${review_file}.tmp" && mv "${review_file}.tmp" "$review_file"
+            echo "Purged deleted branch review URLs."
+        else
+            echo "Purged deleted branch review URLs."
+        fi
+        ;;
+    * )
+        echo "Usage: git review [purge|delete|remove|all|edit|query] [<URL>]"
+        echo ""
+        echo "Examples:"
+        echo "1. add a review url to current branch. URL must starts with 'http://' or 'https://'"
+        echo "   git review https://github.com/snowflakedb/snowflake/pull/212372"
+        echo ""
+        echo "2. add a jira url to current branch. URL must starts with 'http://' or 'https://'"
+        echo "   git review https://snowflakecomputing.atlassian.net/browse/SNOW-1619154"
+        echo ""
+        echo "3. show review URLs or jira url within current branch"
+        echo "   git review"
+        echo ""
+        echo "4. delete all URLs of current branch"
+        echo "   git review delete"
+        echo ""
+        echo "5. delete all invalid URLs associated with deleted branches"
+        echo "   git review purge"
+        echo ""
+        echo "6. edit the database manually"
+        echo "   git review edit"
+        echo ""
+        echo "7. query the database"
+        echo "   git review query [<keyword>]"
+        echo ""
+        echo "8. display this help message"
+        echo "   git review help"
+
+        ;;
+    esac
